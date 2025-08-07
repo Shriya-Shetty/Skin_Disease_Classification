@@ -131,36 +131,22 @@ def save_to_database(name, age, date, prediction, confidence):
         
         df_combined.to_csv(csv_file, index=False)
         st.success("💾 Results saved to database!")
-        
-        with st.expander("📊 View Recent Records", expanded=True):
-            st.dataframe(
-                df_combined.tail(5).style.highlight_max(axis=0),
-                use_container_width=True
-            )
-            if st.button("Delete Last Record", type="secondary"):
-                delete_last_record()
-                st.rerun()
-        
+        st.session_state['database_updated'] = True
         return True
         
     except Exception as e:
         st.error(f"❌ Error saving to database: {str(e)}")
         return False
 
-def delete_last_record():
-    """Delete the last entry from the CSV database"""
+def delete_all_records():
+    """Delete all entries from the CSV database"""
     csv_file = "database.csv"
     if os.path.exists(csv_file):
         try:
-            df_existing = pd.read_csv(csv_file)
-            if not df_existing.empty:
-                df_new = df_existing.iloc[:-1] # Remove the last row
-                df_new.to_csv(csv_file, index=False)
-                st.warning("🗑️ Last record deleted from database.")
-            else:
-                st.info("The database is already empty.")
+            os.remove(csv_file)
+            st.warning("🗑️ All records deleted from database.")
         except Exception as e:
-            st.error(f"Error deleting record: {e}")
+            st.error(f"Error deleting database file: {e}")
 
 # Cache the model loading
 @st.cache_resource
@@ -168,6 +154,10 @@ def get_model():
     return load_model()
 
 # --- Main Application ---
+# Initialize session state for database updates
+if 'database_updated' not in st.session_state:
+    st.session_state['database_updated'] = False
+
 with st.expander("🔧 System Status", expanded=False):
     st.write("**Dependency Check:**")
     st.write(f"- OpenCV (cv2): {'✅ Available' if CV2_AVAILABLE else '❌ Missing'}")
@@ -225,6 +215,37 @@ with col2:
         else:
             if st.button("🔍 Analyze Image", type="primary", use_container_width=True):
                 analyze_image(image_to_analyze, name, age, model)
+
+# --- History and Delete Functions ---
+# This section is added to handle history viewing and deletion separately
+st.markdown("---")
+st.header("🗄️ Database Management")
+
+csv_file = "database.csv"
+
+if os.path.exists(csv_file):
+    try:
+        df = pd.read_csv(csv_file)
+        
+        # Add a section to view full history
+        with st.expander("Full Analysis History", expanded=False):
+            st.dataframe(df, use_container_width=True)
+        
+        # Add a section to delete records
+        st.subheader("Delete Records")
+        st.info("⚠️ This will permanently delete data. Proceed with caution.")
+        
+        delete_button_col, _ = st.columns([1, 4])
+        with delete_button_col:
+            if st.button("Delete All Records", type="secondary"):
+                delete_all_records()
+                st.session_state['database_updated'] = True
+                st.rerun()
+
+    except Exception as e:
+        st.error(f"Error loading database file: {e}")
+        
+st.markdown("---")
 
 with st.sidebar:
     st.header("ℹ️ About")
