@@ -25,9 +25,9 @@ except ImportError:
 # Configure Streamlit page
 st.set_page_config(page_title="Skin Disease Detection", layout="wide")
 
-# Load the model with comprehensive error handling
-@st.cache_resource
+# Function definitions
 def load_model():
+    """Load YOLO model with comprehensive error handling"""
     if not YOLO_AVAILABLE:
         return None
     
@@ -50,97 +50,6 @@ def load_model():
         st.write("2. Ensure 'best.pt' model file is present")
         st.write("3. Check if your model file is corrupted")
         return None
-
-# Display dependency status
-with st.expander("🔧 System Status", expanded=False):
-    st.write("**Dependency Check:**")
-    st.write(f"- OpenCV (cv2): {'✅ Available' if CV2_AVAILABLE else '❌ Missing'}")
-    st.write(f"- YOLO/PyTorch: {'✅ Available' if YOLO_AVAILABLE else '❌ Missing'}")
-    
-    if not YOLO_AVAILABLE:
-        st.error("**Required Installation:**")
-        st.code("pip install ultralytics torch torchvision opencv-python", language="bash")
-
-# Title
-st.title("🔬 Skin Disease Detection App")
-
-# Only proceed if dependencies are available
-if not YOLO_AVAILABLE:
-    st.stop()
-
-# Load model
-model = load_model()
-if model is None:
-    st.stop()
-
-# Create columns for better layout
-col1, col2 = st.columns([1, 2])
-
-with col1:
-    st.subheader("👤 Patient Information")
-    name = st.text_input("Enter your name", placeholder="John Doe")
-    age = st.number_input("Enter your age", min_value=0, max_value=120, step=1, value=25)
-    
-    # Input method selection
-    st.subheader("📷 Image Input")
-    if CV2_AVAILABLE:
-        input_method = st.radio("Choose input method:", ["Upload Image", "Camera Capture"])
-    else:
-        input_method = "Upload Image"
-        st.info("Camera capture disabled - OpenCV not available")
-
-with col2:
-    if input_method == "Upload Image":
-        st.subheader("📁 Upload Image")
-        uploaded_file = st.file_uploader(
-            "Choose an image file...", 
-            type=['jpg', 'jpeg', 'png', 'bmp', 'tiff'],
-            help="Upload a clear image of the skin area to be analyzed"
-        )
-        
-        if uploaded_file is not None:
-            try:
-                # Display uploaded image
-                image = Image.open(uploaded_file)
-                st.image(image, caption="Uploaded Image", use_column_width=True)
-                
-                # Check if name is provided
-                if not name.strip():
-                    st.warning("⚠️ Please enter your name before analysis")
-                else:
-                    # Analyze button
-                    if st.button("🔍 Analyze Image", type="primary", use_container_width=True):
-                        analyze_image(image, name, age, model)
-                        
-            except Exception as e:
-                st.error(f"Error loading image: {str(e)}")
-    
-    elif input_method == "Camera Capture" and CV2_AVAILABLE:
-        st.subheader("📷 Camera Capture")
-        
-        if not name.strip():
-            st.warning("⚠️ Please enter your name before using camera")
-        else:
-            col_cam1, col_cam2 = st.columns(2)
-            
-            with col_cam1:
-                if st.button("📸 Open Camera", type="primary", use_container_width=True):
-                    captured_image = capture_from_camera()
-                    if captured_image is not None:
-                        st.session_state['captured_image'] = captured_image
-            
-            with col_cam2:
-                if st.button("🔄 Clear Capture", use_container_width=True):
-                    if 'captured_image' in st.session_state:
-                        del st.session_state['captured_image']
-                    st.rerun()
-            
-            # Display captured image if available
-            if 'captured_image' in st.session_state:
-                st.image(st.session_state['captured_image'], caption="Captured Image", use_column_width=True)
-                
-                if st.button("🔍 Analyze Captured Image", type="primary", use_container_width=True):
-                    analyze_image(st.session_state['captured_image'], name, age, model)
 
 def capture_from_camera():
     """Capture image from camera with improved error handling"""
@@ -323,6 +232,103 @@ def save_to_database(name, age, date, prediction, confidence):
     except Exception as e:
         st.error(f"❌ Error saving to database: {str(e)}")
         return False
+
+# Cache the model loading
+@st.cache_resource
+def get_model():
+    return load_model()
+
+# Main Application
+# Display dependency status
+with st.expander("🔧 System Status", expanded=False):
+    st.write("**Dependency Check:**")
+    st.write(f"- OpenCV (cv2): {'✅ Available' if CV2_AVAILABLE else '❌ Missing'}")
+    st.write(f"- YOLO/PyTorch: {'✅ Available' if YOLO_AVAILABLE else '❌ Missing'}")
+    
+    if not YOLO_AVAILABLE:
+        st.error("**Required Installation:**")
+        st.code("pip install ultralytics torch torchvision opencv-python", language="bash")
+
+# Title
+st.title("🔬 Skin Disease Detection App")
+
+# Only proceed if dependencies are available
+if not YOLO_AVAILABLE:
+    st.stop()
+
+# Load model
+model = get_model()
+if model is None:
+    st.stop()
+
+# Create columns for better layout
+col1, col2 = st.columns([1, 2])
+
+with col1:
+    st.subheader("👤 Patient Information")
+    name = st.text_input("Enter your name", placeholder="John Doe")
+    age = st.number_input("Enter your age", min_value=0, max_value=120, step=1, value=25)
+    
+    # Input method selection
+    st.subheader("📷 Image Input")
+    if CV2_AVAILABLE:
+        input_method = st.radio("Choose input method:", ["Upload Image", "Camera Capture"])
+    else:
+        input_method = "Upload Image"
+        st.info("Camera capture disabled - OpenCV not available")
+
+with col2:
+    if input_method == "Upload Image":
+        st.subheader("📁 Upload Image")
+        uploaded_file = st.file_uploader(
+            "Choose an image file...", 
+            type=['jpg', 'jpeg', 'png', 'bmp', 'tiff'],
+            help="Upload a clear image of the skin area to be analyzed"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # Display uploaded image
+                image = Image.open(uploaded_file)
+                st.image(image, caption="Uploaded Image", use_container_width=True)
+                
+                # Check if name is provided
+                if not name.strip():
+                    st.warning("⚠️ Please enter your name before analysis")
+                else:
+                    # Analyze button
+                    if st.button("🔍 Analyze Image", type="primary", use_container_width=True):
+                        analyze_image(image, name, age, model)
+                        
+            except Exception as e:
+                st.error(f"Error loading image: {str(e)}")
+    
+    elif input_method == "Camera Capture" and CV2_AVAILABLE:
+        st.subheader("📷 Camera Capture")
+        
+        if not name.strip():
+            st.warning("⚠️ Please enter your name before using camera")
+        else:
+            col_cam1, col_cam2 = st.columns(2)
+            
+            with col_cam1:
+                if st.button("📸 Open Camera", type="primary", use_container_width=True):
+                    captured_image = capture_from_camera()
+                    if captured_image is not None:
+                        st.session_state['captured_image'] = captured_image
+            
+            with col_cam2:
+                if st.button("🔄 Clear Capture", use_container_width=True):
+                    if 'captured_image' in st.session_state:
+                        del st.session_state['captured_image']
+                    st.rerun()
+            
+            # Display captured image if available
+            if 'captured_image' in st.session_state:
+                st.image(st.session_state['captured_image'], caption="Captured Image", use_container_width=True)
+                
+                if st.button("🔍 Analyze Captured Image", type="primary", use_container_width=True):
+                    analyze_image(st.session_state['captured_image'], name, age, model)
 
 # Sidebar information
 with st.sidebar:
