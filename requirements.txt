@@ -1,8 +1,16 @@
+# Core dependencies for Streamlit Cloud
 streamlit
 ultralytics
 torch
 torchvision
+
+# Image processing (headless version for cloud deployment)
 opencv-python-headless
 Pillow
 numpy
+
+# Data handling
 pandas
+
+# System packages that might be needed
+protobuf
