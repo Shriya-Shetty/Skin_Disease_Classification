@@ -1,74 +1,80 @@
 import streamlit as st
-import torch
-import onnxruntime as ort
+from ultralytics import YOLO
+import cv2
 from PIL import Image
 import numpy as np
+import pandas as pd
+import datetime
 import os
 
-# Set up class labels (example: replace with your real labels)
-CLASS_NAMES = ['Acne', 'Eczema', 'Melanoma', 'Psoriasis', 'Healthy']
+# Load the model
+model = YOLO("best.pt")  # Make sure the file is in the same directory
 
-def load_pt_model(model_path):
-    model = torch.load(model_path, map_location=torch.device('cpu'))
-    model.eval()
-    return model
+# Title
+st.title("Skin Disease Detection from Camera")
 
-def load_onnx_session(model_path):
-    return ort.InferenceSession(model_path)
+# User input
+name = st.text_input("Enter your name")
+age = st.number_input("Enter your age", min_value=0, max_value=120, step=1)
+date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def preprocess_image(image):
-    image = image.convert('RGB')
-    image = image.resize((224, 224))
-    image_array = np.array(image).astype('float32') / 255.0
-    image_array = image_array.transpose(2, 0, 1)  # HWC → CHW
-    image_array = np.expand_dims(image_array, axis=0)
-    return image_array
+# Capture image from camera
+capture = st.button("Take Photo from Camera")
 
-def predict_with_pt(model, image_tensor):
-    with torch.no_grad():
-        image_tensor = torch.tensor(image_tensor)
-        outputs = model(image_tensor)
-        _, predicted = torch.max(outputs.data, 1)
-        return CLASS_NAMES[predicted.item()]
+if capture:
+    cap = cv2.VideoCapture(0)
+    st.info("Press 's' to capture image and 'q' to quit camera")
 
-def predict_with_onnx(session, image_tensor):
-    input_name = session.get_inputs()[0].name
-    outputs = session.run(None, {input_name: image_tensor})
-    predicted_class = np.argmax(outputs[0])
-    return CLASS_NAMES[predicted_class]
+    captured = False
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            st.error("Failed to open camera")
+            break
 
-# Streamlit UI
-st.set_page_config(page_title="Skin Disease Classifier", layout="centered")
-st.title("🧴 Skin Disease Classification App")
+        cv2.imshow('Camera - Press s to capture', frame)
+        key = cv2.waitKey(1)
 
-model_file = st.file_uploader("Upload Model (.pt or .onnx)", type=['pt', 'onnx'])
+        if key == ord('s'):
+            captured = True
+            img_path = "captured_image.jpg"
+            cv2.imwrite(img_path, frame)
+            break
+        elif key == ord('q'):
+            break
 
-if model_file:
-    model_ext = os.path.splitext(model_file.name)[1]
+    cap.release()
+    cv2.destroyAllWindows()
 
-    with open(f"models/{model_file.name}", "wb") as f:
-        f.write(model_file.read())
+    if captured:
+        st.success("Image captured!")
+        image = Image.open(img_path)
+        st.image(image, caption="Captured Image")
 
-    st.success(f"Model `{model_file.name}` uploaded.")
+        # Predict
+        results = model.predict(img_path)
+        prediction = results[0].probs.top1conf.item()
+        label = results[0].names[results[0].probs.top1]
 
-    image_file = st.file_uploader("Upload a Skin Image", type=['jpg', 'jpeg', 'png'])
+        st.subheader(f"Prediction: {label}")
+        st.write(f"Confidence: {prediction:.2f}")
 
-    if image_file:
-        image = Image.open(image_file)
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+        # Save to CSV
+        data = {
+            "Name": [name],
+            "Age": [age],
+            "DateTime": [date],
+            "Prediction": [label],
+            "Confidence": [prediction]
+        }
 
-        img_tensor = preprocess_image(image)
+        df_new = pd.DataFrame(data)
 
-        if model_ext == '.pt':
-            model = load_pt_model(f"models/{model_file.name}")
-            prediction = predict_with_pt(model, img_tensor)
-        elif model_ext == '.onnx':
-            session = load_onnx_session(f"models/{model_file.name}")
-            prediction = predict_with_onnx(session, img_tensor)
+        if os.path.exists("database.csv"):
+            df_existing = pd.read_csv("database.csv")
+            df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+            df_combined.to_csv("database.csv", index=False)
         else:
-            st.error("Unsupported model format.")
-            st.stop()
+            df_new.to_csv("database.csv", index=False)
 
-        st.subheader("🩺 Prediction:")
-        st.success(f"**{prediction}**")
-
+        st.success("Data saved to database.csv")
